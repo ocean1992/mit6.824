@@ -1,6 +1,9 @@
 package mapreduce
 
 import (
+	"os"
+	"encoding/json"
+	"io/ioutil"
 	"hash/fnv"
 )
 
@@ -53,6 +56,25 @@ func doMap(
 	//
 	// Your code here (Part I).
 	//
+	content, _:= ioutil.ReadFile(inFile)
+	kvdata := mapF(inFile, string(content))
+	var maps map[int]*os.File
+
+	for _, kv := range kvdata{
+		r := ihash(kv.Key)%nReduce
+		jsonByte, _ := json.Marshal(kv)
+		if writer, ok := maps[r]; ok{
+			writer.Write(jsonByte)
+		}else{
+			file, _ := os.Create(reduceName(jobName, mapTask, r))
+			maps[r] = file
+			file.Write(jsonByte)
+		}
+	}
+
+	for _, file := range maps{
+		file.Close()
+	}
 }
 
 func ihash(s string) int {

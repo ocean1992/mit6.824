@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"hash/fnv"
+	"fmt"
 )
 
 func doMap(
@@ -58,8 +59,7 @@ func doMap(
 	//
 	content, _:= ioutil.ReadFile(inFile)
 	kvdata := mapF(inFile, string(content))
-	var maps map[int]*os.File
-
+	maps := make(map[int]*os.File)
 	for _, kv := range kvdata{
 		r := ihash(kv.Key)%nReduce
 		jsonByte, _ := json.Marshal(kv)
@@ -67,8 +67,10 @@ func doMap(
 			writer.Write(jsonByte)
 		}else{
 			file, _ := os.Create(reduceName(jobName, mapTask, r))
+			fmt.Printf("Map genreate inter file %s\n", reduceName(jobName, mapTask, r))
 			maps[r] = file
 			file.Write(jsonByte)
+			file.WriteString("\n")
 		}
 	}
 

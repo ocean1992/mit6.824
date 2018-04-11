@@ -2,7 +2,6 @@ package mapreduce
 
 import (
 	"fmt"
-	"sync"
 )
 
 //
@@ -34,30 +33,56 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	// Your code here (Part III, Part IV).
 	//
 
-	var wg sync.WaitGroup
-	for i := 0; i < ntasks; i++ {
-		wg.Add(1)
-		go func(tn int, freeWorker chan string) {
-			worker := <-freeWorker
-			//fmt.Printf("schedule phase:%s, taskNumber:%d/%d, mapfiles:%d\n", phase, tn, ntasks, len(mapFiles))
-			args := DoTaskArgs{
-				JobName:       jobName,
-				Phase:         phase,
-				TaskNumber:    tn,
-				NumOtherPhase: n_other,
+	//a rotune to listen completed task
+	finishedTaskCnt := 0
+	finsishTask := make(chan bool)
+	allTasksFinish := make(chan bool)
+	go func() {
+		for {
+			if finishedTaskCnt == ntasks {
+				break
 			}
-			if phase == mapPhase {
-				args.File = mapFiles[tn]
-			}
-			var reply DoTaskReply
+			<-finsishTask
+			finishedTaskCnt++
+		}
+		allTasksFinish <- true
+	}()
 
-			for !call(worker, "Worker.DoTask", &args, &reply) {
-				worker = <-freeWorker
-			}
-			wg.Done()
-			freeWorker <- worker
-		}(i, registerChan)
+	//a rotune to listen failed task and reschedule
+	doTask := make(chan int)
+	go func(){
+		for j:=0 ;j<ntasks ;j++{
+			doTask <- j
+		}
+	}()
+	for {
+		select {
+		case <-allTasksFinish:
+			fmt.Println("All tasks finished!")
+			fmt.Printf("Schedule: %v done\n", phase)
+			return
+		case i := <-doTask:
+			go func(tn int, freeWorker chan string) {
+				worker := <-freeWorker
+				//fmt.Printf("schedule phase:%s, taskNumber:%d/%d, mapfiles:%d\n", phase, tn, ntasks, len(mapFiles))
+				args := DoTaskArgs{
+					JobName:       jobName,
+					Phase:         phase,
+					TaskNumber:    tn,
+					NumOtherPhase: n_other,
+				}
+				if phase == mapPhase {
+					args.File = mapFiles[tn]
+				}
+				var reply DoTaskReply
+
+				if call(worker, "Worker.DoTask", &args, &reply){
+					finsishTask <- true
+				}else{
+					doTask <- tn
+				}
+				freeWorker <- worker
+			}(i, registerChan)
+		}
 	}
-	wg.Wait()
-	fmt.Printf("Schedule: %v done\n", phase)
 }

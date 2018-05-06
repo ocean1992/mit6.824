@@ -5,7 +5,14 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 )
+
+type InterData []KeyValue
+
+func (data InterData) Len() int           { return len(data) }
+func (data InterData) Less(i, j int) bool { return data[i].Key < data[j].Key }
+func (data InterData) Swap(i, j int)      { data[i], data[j] = data[j], data[i] }
 
 func doReduce(
 	jobName string, // the name of the whole MapReduce job
@@ -51,7 +58,7 @@ func doReduce(
 	//
 	// Your code here (Part I).
 	//
-	kvdata := make(map[string][]string)
+	var interData InterData
 	for m := 0; m < nMap; m++ {
 		interFile := reduceName(jobName, m, reduceTask)
 		fmt.Printf("The reduce read interFile %s\n", interFile)
@@ -63,18 +70,25 @@ func doReduce(
 			if err != nil {
 				log.Fatal(err)
 			}
-			if values, ok := kvdata[kv.Key]; ok {
-				kvdata[kv.Key] = append(values, kv.Value)
+			interData = append(interData, kv)
+		}
+	}
+	sort.Sort(interData)
+	writer, _ := os.OpenFile(outFile, os.O_RDWR|os.O_CREATE, 0755)
+	enc := json.NewEncoder(writer)
+	var values []string
+	for i := 0; i < interData.Len(); i++ {
+		if i == 0 {
+			values = []string{interData[i].Value}
+		} else {
+			if interData[i].Key != interData[i-1].Key {
+				enc.Encode(KeyValue{interData[i-1].Key, reduceF(interData[i-1].Key, values)})
+				values = []string{interData[i].Value}
 			} else {
-				val := []string{kv.Value}
-				kvdata[kv.Key] = val
+				values = append(values, interData[i].Value)
 			}
 		}
 	}
-	writer, _ := os.OpenFile(outFile, os.O_RDWR|os.O_CREATE, 0755)
-	enc := json.NewEncoder(writer)
-	for k, v := range kvdata {
-		enc.Encode(KeyValue{k, reduceF(k, v)})
-	}
+	enc.Encode(KeyValue{interData[interData.Len()-1].Key, reduceF(interData[interData.Len()-1].Key, values)})
 	writer.Close()
 }

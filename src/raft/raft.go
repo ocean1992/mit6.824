@@ -17,11 +17,12 @@ package raft
 //   in the same server.
 //
 
-import "sync"
-import "labrpc"
-
-// import "bytes"
-// import "labgob"
+import (
+	"bytes"
+	"labgob"
+	"labrpc"
+	"sync"
+)
 
 //
 // as each Raft peer becomes aware that successive log entries are
@@ -86,6 +87,14 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
@@ -108,6 +117,20 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var pCurrentTerm int
+	var pVotedFor int
+	var pLog []*LogEntry
+	if d.Decode(&pCurrentTerm) != nil ||
+		d.Decode(&pVotedFor) != nil ||
+		d.Decode(&pLog) != nil {
+		DPrintf("Decode Persist Data Error!\n")
+	} else {
+		rf.currentTerm = pCurrentTerm
+		rf.votedFor = pVotedFor
+		rf.log = pLog
+	}
 }
 
 //

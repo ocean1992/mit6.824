@@ -46,6 +46,13 @@ type LogEntry struct {
 	ReceivedTerm int
 }
 
+//Server state in RAFT
+const (
+	Follower  = iota
+	Candidate = iota
+	Leader    = iota
+)
+
 //
 // A Go object implementing a single Raft peer.
 //
@@ -60,17 +67,23 @@ type Raft struct {
 	// state a Raft server must maintain.
 	currentTerm int
 	votedFor    int
-	log         []*LogEntry
+	log         []LogEntry
+	state       int
+
+	//Volatile state on all servers
+	commitIndex int
+	lastApplied int
+
+	//Volatile state on leader
+	nextIndex  []int
+	matchIndex []int
 }
 
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
-
-	var term int
-	var isleader bool
 	// Your code here (2A).
-	return term, isleader
+	return rf.currentTerm, rf.state == Leader
 }
 
 //
@@ -121,7 +134,7 @@ func (rf *Raft) readPersist(data []byte) {
 	d := labgob.NewDecoder(r)
 	var pCurrentTerm int
 	var pVotedFor int
-	var pLog []*LogEntry
+	var pLog []LogEntry
 	if d.Decode(&pCurrentTerm) != nil ||
 		d.Decode(&pVotedFor) != nil ||
 		d.Decode(&pLog) != nil {

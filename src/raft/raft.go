@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"labgob"
 	"labrpc"
+	"math"
 	"sync"
 )
 
@@ -173,22 +174,22 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	args.Term = rf.currentTerm
+	reply.Term = rf.currentTerm
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
-		return 
+		return
 	}
-	if rf.votedFor>0 && rf.votedFor!=args.CandidateID{
-		reply.VoteGranted = false 
-		return 
+	if rf.votedFor > 0 && rf.votedFor != args.CandidateID {
+		reply.VoteGranted = false
+		return
 	}
 	if rf.currentTerm == args.Term {
 		if len(rf.log)-1 <= args.LastLogIndex {
 			reply.VoteGranted = true
-		}else{
+		} else {
 			reply.VoteGranted = false
 		}
-	}else{
+	} else {
 		//rf.currentTerm < RequestVoteArgs.Term
 		reply.VoteGranted = true
 	}
@@ -228,6 +229,39 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
+type AppendEntriesArgs struct {
+	Term         int
+	LeaderID     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []LogEntry
+	LeaderCommit int
+}
+
+type AppendEntriesReply struct {
+	Term    int
+	Success bool
+}
+
+func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	reply.Term = rf.currentTerm
+	if args.Term < rf.currentTerm {
+		reply.Success = false
+	} else {
+		if len(rf.log) <= args.PrevLogIndex || rf.log[args.PrevLogIndex].ReceivedTerm != args.PrevLogTerm {
+			reply.Success = false
+		} else {
+			reply.Success = true
+		}
+	}
+	//todo: AppendEntries RPC 3. 4. 5. 2A only for heartbeat
+}
+
+func (rf *Raft) sendAppendEntires(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.AppendEntries", args, reply)
+	return ok
+}
+
 //
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
@@ -259,7 +293,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 //
 func (rf *Raft) Kill() {
 	// Your code here, if desired.
-	DPrintf("%s has been killed", rf.me)
+	DPrintf("server %s has been killed", rf.me)
 }
 
 //

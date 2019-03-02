@@ -178,8 +178,7 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	args.Term = rf.currentTerm
-	if args.Term < rf.currentTerm {
+	if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		return
 	}
@@ -295,7 +294,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.matchIndex = make([]int, len(peers))
 	for i := range rf.matchIndex {
 		rf.matchIndex[i] = 0
-		rf.nextIndex[i] = 0
+		rf.nextIndex[i] = 1 //leader last log index+1 ?
 	}
 
 	rf.heartbeatTimeout = r.Intn(200) + 200

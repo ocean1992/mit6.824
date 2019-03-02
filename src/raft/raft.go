@@ -21,6 +21,7 @@ import (
 	"bytes"
 	"labgob"
 	"labrpc"
+	"math/rand"
 	"sync"
 )
 
@@ -61,6 +62,10 @@ type Raft struct {
 	peers     []*labrpc.ClientEnd // RPC end points of all peers
 	persister *Persister          // Object to hold this peer's persisted state
 	me        int                 // this peer's index into peers[]
+
+	//timeout
+	electionTimeout  int
+	heartbeatTimeout int
 
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
@@ -176,19 +181,19 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	args.Term = rf.currentTerm
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
-		return 
+		return
 	}
-	if rf.votedFor>0 && rf.votedFor!=args.CandidateID{
-		reply.VoteGranted = false 
-		return 
+	if rf.votedFor > 0 && rf.votedFor != args.CandidateID {
+		reply.VoteGranted = false
+		return
 	}
 	if rf.currentTerm == args.Term {
 		if len(rf.log)-1 <= args.LastLogIndex {
 			reply.VoteGranted = true
-		}else{
+		} else {
 			reply.VoteGranted = false
 		}
-	}else{
+	} else {
 		//rf.currentTerm < RequestVoteArgs.Term
 		reply.VoteGranted = true
 	}
@@ -247,7 +252,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
-
 	return index, term, isLeader
 }
 
@@ -275,6 +279,7 @@ func (rf *Raft) Kill() {
 //
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
+	r := rand.New(rand.NewSource(99))
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
@@ -293,6 +298,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 		rf.nextIndex[i] = 0
 	}
 
+	rf.heartbeatTimeout = r.Intn(200) + 200
+	rf.electionTimeout = r.Intn(300) + 300
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 

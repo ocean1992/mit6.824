@@ -157,6 +157,7 @@ func (rf *Raft) readPersist(data []byte) {
 //Trigger of Election
 func (rf *Raft) electionTrig(){
 	for {
+		
 		time.Sleep(time.Duration(rf.electionTimeout) * time.Millisecond)
 		switch rf.state{
 		case Leader:
@@ -171,6 +172,11 @@ func (rf *Raft) electionTrig(){
 	}
 }
 
+//Send HeartBeat (Empty AppendEntries)
+func (rf *Raft) leaderWork(){
+	DPrintf("%v is leader now!", rf.me)
+}
+
 //A new elect func
 func (rf *Raft) elect(){
 	if rf.state != Candidate {
@@ -181,19 +187,44 @@ func (rf *Raft) elect(){
 	args := &RequestVoteArgs{}
 	args.CandidateID = rf.me
 	args.LastLogIndex = len(rf.log)-1
-	args.LastLogTerm = rf.log[len(rf.log)-1].ReceivedTerm
+	if args.LastLogIndex > -1{
+		args.LastLogTerm = rf.log[len(rf.log)-1].ReceivedTerm
+	}else{
+		args.LastLogTerm = 0
+	}
 	args.Term = rf.currentTerm
 	rf.latestHeartbeatTime = time.Now() 
-	reply := &RequestVoteReply{}
-	voteCnt := 1 
+
+	DPrintf("at term %v, server %v starts a new election, and the args is %v",rf.currentTerm, rf.me, *args)
+	replys := make([]RequestVoteReply, len(rf.peers))
+	oks := make(chan bool, len(rf.peers))
+	voteCnt := 1
 	for i:=0; i<len(rf.peers) ;i++{
-		ok := rf.sendRequestVote(i, args, reply)
-		if ok && reply.VoteGranted{
+		if i==rf.me{
+			continue
+		}
+		replys[i] = RequestVoteReply{}
+		go func() {
+			DPrintf("%v: %v",i, replys[i])
+			oks <- rf.sendRequestVote(i, args, &replys[i])
+		}()
+	}
+	for i:=0 ;i<len(replys)-1 ;i++{
+		ok := <-oks 
+		if ok {
+			DPrintf("server %v get votes from server %v!", rf.me, i)	
 			voteCnt++
 		}
 	}
+	// for i:=0; i<len(replys) ;i++{
+	// 	if i!=rf.me && replys[i].VoteGranted {
+	// 		DPrintf("server %v get votes from server %v!", rf.me, i)
+	// 		voteCnt++
+	// 	}
+	// }
 	if voteCnt > len(rf.peers)/2 && rf.state==Candidate{
 		rf.state = Leader
+		go rf.leaderWork()
 	}
 }
 
@@ -275,7 +306,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 //
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
-	return ok
+	return ok && reply.VoteGranted
 }
 
 type AppendEntriesArgs struct {
@@ -293,6 +324,8 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	rf.latestHeartbeatTime = time.Now()
+	rf.state = Follower
 	reply.Term = rf.currentTerm
 	if args.Term < rf.currentTerm {
 		reply.Success = false
@@ -357,7 +390,7 @@ func (rf *Raft) Kill() {
 //
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
-	r := rand.New(rand.NewSource(99))
+	r := rand.New(rand.NewSource(int64(me)*10))
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
@@ -378,10 +411,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.heartbeatTimeout = r.Intn(200) + 200
 	rf.electionTimeout = r.Intn(300) + 300
+	DPrintf("server %v electionTimeout is %v", rf.me, rf.electionTimeout)
 	rf.latestHeartbeatTime = time.Now() 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	go rf.electionTrig()
-	
 	return rf
 }

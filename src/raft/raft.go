@@ -23,6 +23,7 @@ import (
 	"labrpc"
 	"math/rand"
 	"sync"
+	"time"
 )
 
 //
@@ -78,6 +79,7 @@ type Raft struct {
 	//Volatile state on all servers
 	commitIndex int
 	lastApplied int
+	latestHeartbeatTime time.Time
 
 	//Volatile state on leader
 	nextIndex  []int
@@ -148,6 +150,50 @@ func (rf *Raft) readPersist(data []byte) {
 		rf.currentTerm = pCurrentTerm
 		rf.votedFor = pVotedFor
 		rf.log = pLog
+	}
+}
+
+//
+//Trigger of Election
+func (rf *Raft) electionTrig(){
+	for {
+		time.Sleep(time.Duration(rf.electionTimeout) * time.Millisecond)
+		switch rf.state{
+		case Leader:
+		case Follower:
+			if time.Now().Sub(rf.latestHeartbeatTime) >= time.Duration(rf.electionTimeout)*time.Millisecond {
+				rf.state = Candidate
+			}
+			go rf.elect()
+		case Candidate:
+			go rf.elect()
+		}
+	}
+}
+
+//A new elect func
+func (rf *Raft) elect(){
+	if rf.state != Candidate {
+		return 
+	}
+	rf.currentTerm++
+	rf.votedFor = rf.me
+	args := &RequestVoteArgs{}
+	args.CandidateID = rf.me
+	args.LastLogIndex = len(rf.log)-1
+	args.LastLogTerm = rf.log[len(rf.log)-1].ReceivedTerm
+	args.Term = rf.currentTerm
+	rf.latestHeartbeatTime = time.Now() 
+	reply := &RequestVoteReply{}
+	voteCnt := 1 
+	for i:=0; i<len(rf.peers) ;i++{
+		ok := rf.sendRequestVote(i, args, reply)
+		if ok && reply.VoteGranted{
+			voteCnt++
+		}
+	}
+	if voteCnt > len(rf.peers)/2 && rf.state==Candidate{
+		rf.state = Leader
 	}
 }
 
@@ -332,8 +378,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	rf.heartbeatTimeout = r.Intn(200) + 200
 	rf.electionTimeout = r.Intn(300) + 300
+	rf.latestHeartbeatTime = time.Now() 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
-
+	go rf.electionTrig()
+	
 	return rf
 }

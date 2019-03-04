@@ -175,6 +175,20 @@ func (rf *Raft) electionTrig(){
 //Send HeartBeat (Empty AppendEntries)
 func (rf *Raft) leaderWork(){
 	DPrintf("%v is leader now!", rf.me)
+	replys := make([]AppendEntriesReply, len(rf.peers))
+	for ;rf.state==Leader; {
+		args := &AppendEntriesArgs{}
+		args.LeaderCommit = rf.commitIndex
+		args.Term = rf.currentTerm
+		args.LeaderID = rf.me
+
+		for i:=0 ;i<len(rf.peers) ;i++{
+			go func(peer int){
+				rf.sendAppendEntires(peer, args, &replys[peer])
+			}(i)
+		}
+		time.Sleep(time.Duration(rf.heartbeatTimeout)*time.Millisecond)
+	}
 }
 
 //A new elect func
@@ -203,11 +217,9 @@ func (rf *Raft) elect(){
 		if i==rf.me{
 			continue
 		}
-		replys[i] = RequestVoteReply{}
-		go func() {
-			DPrintf("%v: %v",i, replys[i])
-			oks <- rf.sendRequestVote(i, args, &replys[i])
-		}()
+		go func(peer int) {
+			oks <- rf.sendRequestVote(peer, args, &replys[peer])
+		}(i)
 	}
 	for i:=0 ;i<len(replys)-1 ;i++{
 		ok := <-oks 
@@ -216,12 +228,6 @@ func (rf *Raft) elect(){
 			voteCnt++
 		}
 	}
-	// for i:=0; i<len(replys) ;i++{
-	// 	if i!=rf.me && replys[i].VoteGranted {
-	// 		DPrintf("server %v get votes from server %v!", rf.me, i)
-	// 		voteCnt++
-	// 	}
-	// }
 	if voteCnt > len(rf.peers)/2 && rf.state==Candidate{
 		rf.state = Leader
 		go rf.leaderWork()
@@ -255,6 +261,7 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
+	DPrintf("At term %v, server %v received RequestVote of server %v, args: %v", rf.currentTerm, rf.me, args.CandidateID, *args)
 	if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		return

@@ -176,19 +176,62 @@ func (rf *Raft) electionTrig() {
 func (rf *Raft) leaderWork() {
 	DPrintf("%v is leader now!", rf.me)
 	replys := make([]AppendEntriesReply, len(rf.peers))
-	for rf.state == Leader {
-		args := &AppendEntriesArgs{}
-		args.LeaderCommit = rf.commitIndex
-		args.Term = rf.currentTerm
-		args.LeaderID = rf.me
+	for {
+		if rf.state == Leader {
+			args := &AppendEntriesArgs{}
+			args.LeaderCommit = rf.commitIndex
+			args.Term = rf.currentTerm
+			args.LeaderID = rf.me
 
-		for i := 0; i < len(rf.peers); i++ {
-			if i == rf.me {
-				continue
+			for i := 0; i < len(rf.peers); i++ {
+				if i == rf.me {
+					continue
+				}
+				go func(peer int) {
+					rf.sendAppendEntires(peer, args, &replys[peer])
+				}(i)
 			}
-			go func(peer int) {
-				rf.sendAppendEntires(peer, args, &replys[peer])
-			}(i)
+		}
+		time.Sleep(time.Duration(rf.heartbeatTimeout) * time.Millisecond)
+	}
+}
+
+//replica log to a follower
+func (rf *Raft) replicaLog(dst int, lastLogIndex int) bool {
+	args := &AppendEntriesArgs{}
+	args.Entries = rf.log[rf.nextIndex[dst] : lastLogIndex+1]
+	args.LeaderCommit = rf.commitIndex
+	args.LeaderID = rf.me
+	args.PrevLogIndex = rf.matchIndex[dst]
+	args.PrevLogTerm = rf.log[args.PrevLogIndex].ReceivedTerm
+	reply := &AppendEntriesReply{}
+	ok := rf.sendAppendEntires(dst, args, reply)
+	if ok {
+		if reply.Success {
+			rf.matchIndex[dst] = lastLogIndex
+			rf.nextIndex[dst] = lastLogIndex + 1
+			return true
+		} else {
+			rf.nextIndex[dst] -= 1
+			return rf.replicaLog(dst, lastLogIndex)
+		}
+	} else {
+		return rf.replicaLog(dst, lastLogIndex)
+	}
+}
+
+//Send Log
+func (rf *Raft) broadcast() {
+	for {
+		if rf.state == Leader {
+			for i := range rf.peers {
+				if i == rf.me {
+					continue
+				}
+				if len(rf.log)-1 >= rf.nextIndex[i] {
+					go rf.replicaLog(i, len(rf.log)-1)
+				}
+			}
 		}
 		time.Sleep(time.Duration(rf.heartbeatTimeout) * time.Millisecond)
 	}
@@ -231,7 +274,6 @@ func (rf *Raft) elect() {
 	}
 	if voteCnt > len(rf.peers)/2 && rf.state == Candidate {
 		rf.state = Leader
-		go rf.leaderWork()
 	}
 }
 
@@ -446,5 +488,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	go rf.electionTrig()
+	go rf.leaderWork()
 	return rf
 }

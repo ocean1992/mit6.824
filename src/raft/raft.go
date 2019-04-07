@@ -212,7 +212,6 @@ func (rf *Raft) elect() {
 	args.Term = rf.currentTerm
 	rf.latestHeartbeatTime = time.Now()
 
-	DPrintf("at term %v, server %v starts a new election, and the args is %v", rf.currentTerm, rf.me, *args)
 	replys := make([]RequestVoteReply, len(rf.peers))
 	oks := make(chan bool, len(rf.peers))
 	voteCnt := 1
@@ -227,7 +226,6 @@ func (rf *Raft) elect() {
 	for i := 0; i < len(replys)-1; i++ {
 		ok := <-oks
 		if ok {
-			DPrintf("server %v get votes from server %v!", rf.me, i)
 			voteCnt++
 		}
 	}
@@ -349,6 +347,21 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 	}
 	//todo: AppendEntries RPC 3. 4. 5. 2A only for heartbeat
+	if reply.Success && len(args.Entries) > 0 {
+		i := 0
+		for ; i < len(args.Entries) && args.PrevLogIndex+i < len(rf.log); i++ {
+			if args.Entries[i].ReceivedTerm != rf.log[args.PrevLogIndex+i].ReceivedTerm {
+				rf.log = rf.log[0:i]
+				break
+			}
+		}
+		for ; i < len(args.Entries); i++ {
+			rf.log = append(rf.log, args.Entries[i])
+		}
+		if args.LeaderCommit > rf.commitIndex {
+			rf.commitIndex = Min(args.LeaderCommit, len(rf.log))
+		}
+	}
 }
 
 func (rf *Raft) sendAppendEntires(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
@@ -375,6 +388,10 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
+	if rf.state != Leader {
+		return index, term, false
+	}
+	rf.log = append(rf.log, LogEntry{command, rf.currentTerm})
 	return index, term, isLeader
 }
 
@@ -419,7 +436,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.matchIndex = make([]int, len(peers))
 	for i := range rf.matchIndex {
 		rf.matchIndex[i] = 0
-		rf.nextIndex[i] = 1 //leader last log index+1 ?
+		rf.nextIndex[i] = 1
 	}
 
 	rf.heartbeatTimeout = r.Intn(200) + 200

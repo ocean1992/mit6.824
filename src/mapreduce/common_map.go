@@ -1,11 +1,11 @@
 package mapreduce
 
 import (
-	"os"
 	"encoding/json"
-	"io/ioutil"
-	"hash/fnv"
 	"fmt"
+	"hash/fnv"
+	"io/ioutil"
+	"os"
 )
 
 func doMap(
@@ -57,15 +57,15 @@ func doMap(
 	//
 	// Your code here (Part I).
 	//
-	content, _:= ioutil.ReadFile(inFile)
+	content, _ := ioutil.ReadFile(inFile)
 	kvdata := mapF(inFile, string(content))
 	maps := make(map[int]*os.File)
-	for _, kv := range kvdata{
-		r := ihash(kv.Key)%nReduce
+	for _, kv := range kvdata {
+		r := ihash(kv.Key) % nReduce
 		jsonByte, _ := json.Marshal(kv)
-		if writer, ok := maps[r]; ok{
+		if writer, ok := maps[r]; ok {
 			writer.Write(jsonByte)
-		}else{
+		} else {
 			file, _ := os.Create(reduceName(jobName, mapTask, r))
 			fmt.Printf("Map genreate inter file %s\n", reduceName(jobName, mapTask, r))
 			maps[r] = file
@@ -74,7 +74,7 @@ func doMap(
 		}
 	}
 
-	for _, file := range maps{
+	for _, file := range maps {
 		file.Close()
 	}
 }

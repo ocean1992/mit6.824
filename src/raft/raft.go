@@ -77,8 +77,8 @@ type Raft struct {
 	state       int
 
 	//Volatile state on all servers
-	commitIndex int
-	lastApplied int
+	commitIndex         int
+	lastApplied         int
 	latestHeartbeatTime time.Time
 
 	//Volatile state on leader
@@ -155,11 +155,11 @@ func (rf *Raft) readPersist(data []byte) {
 
 //
 //Trigger of Election
-func (rf *Raft) electionTrig(){
+func (rf *Raft) electionTrig() {
 	for {
-		
+
 		time.Sleep(time.Duration(rf.electionTimeout) * time.Millisecond)
-		switch rf.state{
+		switch rf.state {
 		case Leader:
 		case Follower:
 			if time.Now().Sub(rf.latestHeartbeatTime) >= time.Duration(rf.electionTimeout)*time.Millisecond {
@@ -173,62 +173,62 @@ func (rf *Raft) electionTrig(){
 }
 
 //Send HeartBeat (Empty AppendEntries)
-func (rf *Raft) leaderWork(){
+func (rf *Raft) leaderWork() {
 	DPrintf("%v is leader now!", rf.me)
 	replys := make([]AppendEntriesReply, len(rf.peers))
-	for ;rf.state==Leader; {
+	for rf.state == Leader {
 		args := &AppendEntriesArgs{}
 		args.LeaderCommit = rf.commitIndex
 		args.Term = rf.currentTerm
 		args.LeaderID = rf.me
 
-		for i:=0 ;i<len(rf.peers) ;i++{
-			go func(peer int){
+		for i := 0; i < len(rf.peers); i++ {
+			go func(peer int) {
 				rf.sendAppendEntires(peer, args, &replys[peer])
 			}(i)
 		}
-		time.Sleep(time.Duration(rf.heartbeatTimeout)*time.Millisecond)
+		time.Sleep(time.Duration(rf.heartbeatTimeout) * time.Millisecond)
 	}
 }
 
 //A new elect func
-func (rf *Raft) elect(){
+func (rf *Raft) elect() {
 	if rf.state != Candidate {
-		return 
+		return
 	}
 	rf.currentTerm++
 	rf.votedFor = rf.me
 	args := &RequestVoteArgs{}
 	args.CandidateID = rf.me
-	args.LastLogIndex = len(rf.log)-1
-	if args.LastLogIndex > -1{
+	args.LastLogIndex = len(rf.log) - 1
+	if args.LastLogIndex > -1 {
 		args.LastLogTerm = rf.log[len(rf.log)-1].ReceivedTerm
-	}else{
+	} else {
 		args.LastLogTerm = 0
 	}
 	args.Term = rf.currentTerm
-	rf.latestHeartbeatTime = time.Now() 
+	rf.latestHeartbeatTime = time.Now()
 
-	DPrintf("at term %v, server %v starts a new election, and the args is %v",rf.currentTerm, rf.me, *args)
+	DPrintf("at term %v, server %v starts a new election, and the args is %v", rf.currentTerm, rf.me, *args)
 	replys := make([]RequestVoteReply, len(rf.peers))
 	oks := make(chan bool, len(rf.peers))
 	voteCnt := 1
-	for i:=0; i<len(rf.peers) ;i++{
-		if i==rf.me{
+	for i := 0; i < len(rf.peers); i++ {
+		if i == rf.me {
 			continue
 		}
 		go func(peer int) {
 			oks <- rf.sendRequestVote(peer, args, &replys[peer])
 		}(i)
 	}
-	for i:=0 ;i<len(replys)-1 ;i++{
-		ok := <-oks 
+	for i := 0; i < len(replys)-1; i++ {
+		ok := <-oks
 		if ok {
-			DPrintf("server %v get votes from server %v!", rf.me, i)	
+			DPrintf("server %v get votes from server %v!", rf.me, i)
 			voteCnt++
 		}
 	}
-	if voteCnt > len(rf.peers)/2 && rf.state==Candidate{
+	if voteCnt > len(rf.peers)/2 && rf.state == Candidate {
 		rf.state = Leader
 		go rf.leaderWork()
 	}
@@ -381,7 +381,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 //
 func (rf *Raft) Kill() {
 	// Your code here, if desired.
-	DPrintf("server %s has been killed", rf.me)
+	DPrintf("server %d has been killed", rf.me)
 }
 
 //
@@ -397,7 +397,7 @@ func (rf *Raft) Kill() {
 //
 func Make(peers []*labrpc.ClientEnd, me int,
 	persister *Persister, applyCh chan ApplyMsg) *Raft {
-	r := rand.New(rand.NewSource(int64(me)*10))
+	r := rand.New(rand.NewSource(int64(me) * 10))
 	rf := &Raft{}
 	rf.peers = peers
 	rf.persister = persister
@@ -419,7 +419,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.heartbeatTimeout = r.Intn(200) + 200
 	rf.electionTimeout = r.Intn(300) + 300
 	DPrintf("server %v electionTimeout is %v", rf.me, rf.electionTimeout)
-	rf.latestHeartbeatTime = time.Now() 
+	rf.latestHeartbeatTime = time.Now()
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
 	go rf.electionTrig()

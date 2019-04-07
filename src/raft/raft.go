@@ -183,6 +183,9 @@ func (rf *Raft) leaderWork() {
 		args.LeaderID = rf.me
 
 		for i := 0; i < len(rf.peers); i++ {
+			if i == rf.me {
+				continue
+			}
 			go func(peer int) {
 				rf.sendAppendEntires(peer, args, &replys[peer])
 			}(i)
@@ -331,6 +334,7 @@ type AppendEntriesReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
+	DPrintf("At term %d, server %d received AppendEntries from server %d, args: %v", rf.currentTerm, rf.me, args.LeaderID, args)
 	rf.latestHeartbeatTime = time.Now()
 	rf.state = Follower
 	reply.Term = rf.currentTerm
@@ -340,6 +344,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if len(rf.log) <= args.PrevLogIndex || rf.log[args.PrevLogIndex].ReceivedTerm != args.PrevLogTerm {
 			reply.Success = false
 		} else {
+			rf.currentTerm = args.Term
 			reply.Success = true
 		}
 	}
@@ -408,7 +413,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.commitIndex = 0
 	rf.lastApplied = 0
 
-	rf.log = make([]LogEntry, 0)
+	rf.log = make([]LogEntry, 1)
+	rf.log[0].ReceivedTerm = 0
 	rf.nextIndex = make([]int, len(peers))
 	rf.matchIndex = make([]int, len(peers))
 	for i := range rf.matchIndex {

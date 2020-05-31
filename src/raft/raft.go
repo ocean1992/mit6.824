@@ -443,7 +443,6 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.commitIndex = Min(args.LeaderCommit, len(rf.log))
 			rf.applyLog()
 		}
-		DPrintf("server %v has replicaed log %v", rf.me, args)
 	}
 }
 
